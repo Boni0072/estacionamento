@@ -426,7 +426,8 @@ export function ParkingManager() {
 
   // Efeito reativo para encontrar e ocupar automaticamente a vaga livre mais próxima via GPS
   useEffect(() => {
-    if (!userLocation || loading || isEditMode || spots.length === 0 || confirmedSpot) return;
+    const hasActiveReservation = spots.some(s => s.occupied_by === userId && s.is_occupied);
+    if (!userLocation || loading || isEditMode || spots.length === 0 || confirmedSpot || hasActiveReservation) return;
 
     // Filtra as vagas que possuem GPS cadastrado e associa ao status atual do banco
     const candidates = spotPositions
@@ -511,6 +512,13 @@ export function ParkingManager() {
     const now = new Date();
 
     if (!currentStatus) {
+      // Impede reserva múltipla: verifica se o usuário já tem uma vaga ocupada
+      const activeSpot = spots.find(s => s.occupied_by === userId && s.is_occupied);
+      if (activeSpot && !isAdmin) {
+        alert(`Você já reservou a vaga ${activeSpot.spot_number}. É necessário liberá-la antes de ocupar outra.`);
+        return;
+      }
+
       // Ocupando a vaga: define expiração para 8 horas
       const expiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1000);
       update(spotRef, {
