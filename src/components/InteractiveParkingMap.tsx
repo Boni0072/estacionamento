@@ -227,8 +227,6 @@ export function InteractiveParkingMap({
     };
   }, [updateScale]);
 
-  const actualPositions = getActualSpotPositions();
-
   return (
     <div ref={wrapperRef} className="relative w-full h-full bg-gray-200 rounded-xl shadow-inner overflow-hidden border-2 border-gray-300 flex flex-col">
       {/* Área de Visualização com Rolagem */}
@@ -249,7 +247,7 @@ export function InteractiveParkingMap({
             className="w-full h-auto block shadow-lg"
           />
 
-          {actualPositions.map(pos => {
+          {spotPositions.map(pos => {
             const spot = spots.find(s => s.spot_number === pos.spotNumber);
             const occupied = spot?.is_occupied;
 
@@ -279,10 +277,12 @@ export function InteractiveParkingMap({
                     : 'border-green-300 bg-green-600/90'
                 }`}
                 style={{
-                  left: (pos.x + pos.width / 2) * scale,
-                  top: (pos.y + pos.height / 2) * scale,
-                  width: Math.max(pos.width * scale * 0.9, 24),
-                  height: Math.max(pos.height * scale * 0.9, 14),
+                  left: `${((pos.x + pos.width / 2) / ORIGINAL_IMAGE_WIDTH) * 100}%`,
+                  top: `${((pos.y + pos.height / 2) / ORIGINAL_IMAGE_HEIGHT) * 100}%`,
+                  width: `${(pos.width / ORIGINAL_IMAGE_WIDTH) * 100}%`,
+                  height: `${(pos.height / ORIGINAL_IMAGE_HEIGHT) * 100}%`,
+                  minWidth: '24px',
+                  minHeight: '14px',
                   zIndex: isEditing ? 60 : (draggingSpot === pos.spotNumber ? 50 : 10),
                   transform: `translate(-50%, -50%) rotate(${(pos.rotation || 0) + rotation}deg)`,
                   transformOrigin: 'center center',
@@ -299,10 +299,10 @@ export function InteractiveParkingMap({
       {hoveredSpot && !isEditing && (
         <div className="absolute top-4 left-4 z-50 bg-blue-600/95 text-white px-4 py-3 rounded-2xl text-sm font-bold shadow-2xl animate-in fade-in slide-in-from-top-2">
           <div className="text-lg">Vaga: {hoveredSpot}</div>
-          {actualPositions.find(p => p.spotNumber === hoveredSpot)?.latitude && (
+          {spotPositions.find(p => p.spotNumber === hoveredSpot)?.latitude && (
             <div className="text-[10px] font-mono mt-1 opacity-90 border-t border-blue-400 pt-1">
-              Lat: {actualPositions.find(p => p.spotNumber === hoveredSpot)?.latitude}<br/>
-              Long: {actualPositions.find(p => p.spotNumber === hoveredSpot)?.longitude}
+              Lat: {spotPositions.find(p => p.spotNumber === hoveredSpot)?.latitude}<br/>
+              Long: {spotPositions.find(p => p.spotNumber === hoveredSpot)?.longitude}
             </div>
           )}
         </div>
