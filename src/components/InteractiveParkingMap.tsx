@@ -182,8 +182,13 @@ export function InteractiveParkingMap({
       const y = (position.y - dragOffset.y) / scale;
 
       const canvas = canvasRef.current;
-      const maxX = canvas.width - 40.997;
-      const maxY = canvas.height - 29.282;
+      // Busca o tamanho real da vaga sendo arrastada para um limite preciso
+      const draggingPos = spotPositions.find(p => p.spotNumber === draggingSpot);
+      const spotW = draggingPos?.width || 45.1;
+      const spotH = draggingPos?.height || 32.2;
+
+      const maxX = canvas.width - spotW;
+      const maxY = canvas.height - spotH;
       const clampedX = Math.max(0, Math.min(x, maxX));
       const clampedY = Math.max(0, Math.min(y, maxY));
 
@@ -262,7 +267,7 @@ export function InteractiveParkingMap({
                     onSpotClick(spot.id, spot.is_occupied);
                   }
                 }}
-                className={`absolute flex items-center justify-center gap-1 rounded-sm border-2 text-[12px] font-bold text-white shadow-md transition-all ${
+                className={`absolute flex items-center justify-center gap-1 rounded-sm border-2 text-[13px] font-bold text-white shadow-md transition-all ${
                   selectedSpot === pos.spotNumber
                     ? 'ring-4 ring-blue-400 border-white scale-110 z-40'
                     : ''
