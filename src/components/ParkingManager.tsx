@@ -1,0 +1,883 @@
+import { useEffect, useState } from 'react';
+import { db, ParkingSpot } from '../lib/supabase';
+import { ref, onValue, set, update } from 'firebase/database';
+import { InteractiveParkingMap } from './InteractiveParkingMap';
+import { Plus, MapPin, Lock, Unlock, CheckCircle2, Radar, X, Crosshair, Download, Upload, Save, ChevronDown, ChevronUp } from 'lucide-react';
+
+interface SpotPosition {
+  spotNumber: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  latitude?: number;
+  longitude?: number;
+}
+
+// Tipagem para o evento de instalação do PWA
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: Array<string>;
+  readonly userChoice: Promise<{
+    outcome: 'accepted' | 'dismissed';
+    platform: string;
+  }>;
+  prompt(): Promise<void>;
+}
+
+const STORAGE_KEY = 'parking_spot_positions';
+const STORAGE_KEY_ROTATION = 'parking_rotation';
+const STORAGE_KEY_SPOTS = 'parking_spots_data';
+const DEFAULT_SPOT_POSITIONS: SpotPosition[] = [
+  { spotNumber: 'A1', x: 180, y: 95, width: 40.997, height: 29.282, latitude: -22.850745, longitude: -47.178021 },
+  { spotNumber: 'A2', x: 210, y: 95, width: 40.997, height: 29.282, latitude: -22.850751, longitude: -47.178042 },
+  { spotNumber: 'A3', x: 240, y: 95, width: 40.997, height: 29.282, latitude: -22.850762, longitude: -47.178066 },
+  { spotNumber: 'A4', x: 270, y: 95, width: 40.997, height: 29.282, latitude: -22.850766, longitude: -47.178089 },
+  { spotNumber: 'A5', x: 300, y: 95, width: 40.997, height: 29.282, latitude: -22.850771, longitude: -47.178113 },
+  { spotNumber: 'A6', x: 330, y: 95, width: 40.997, height: 29.282, latitude: -22.850778, longitude: -47.178135 },
+  { spotNumber: 'A7', x: 360, y: 95, width: 40.997, height: 29.282, latitude: -22.850785, longitude: -47.178158 },
+  { spotNumber: 'A8', x: 390, y: 95, width: 40.997, height: 29.282, latitude: -22.850789, longitude: -47.178179 },
+  { spotNumber: 'A9', x: 420, y: 95, width: 40.997, height: 29.282, latitude: -22.850799, longitude: -47.178203 },
+  { spotNumber: 'A10', x: 450, y: 95, width: 40.997, height: 29.282, latitude: -22.850806, longitude: -47.178221 },
+  { spotNumber: 'A11', x: 480, y: 95, width: 40.997, height: 29.282, latitude: -22.850812, longitude: -47.178244 },
+  { spotNumber: 'A12', x: 510, y: 95, width: 40.997, height: 29.282, latitude: -22.850817, longitude: -47.178270 },
+  { spotNumber: 'A13', x: 570, y: 95, width: 40.997, height: 29.282, latitude: -22.850824, longitude: -47.178292 },
+  { spotNumber: 'A14', x: 600, y: 95, width: 40.997, height: 29.282, latitude: -22.850833, longitude: -47.178312 },
+  { spotNumber: 'A15', x: 630, y: 95, width: 40.997, height: 29.282, latitude: -22.850828, longitude: -47.178336 },
+  { spotNumber: 'A16', x: 660, y: 95, width: 40.997, height: 29.282, latitude: -22.850835, longitude: -47.178358 },
+  { spotNumber: 'A17', x: 690, y: 95, width: 40.997, height: 29.282, latitude: -22.850842, longitude: -47.178383 },
+  { spotNumber: 'A18', x: 720, y: 95, width: 40.997, height: 29.282, latitude: -22.850848, longitude: -47.178406 },
+  { spotNumber: 'A19', x: 750, y: 95, width: 40.997, height: 29.282, latitude: -22.850852, longitude: -47.178427 },
+  { spotNumber: 'A20', x: 780, y: 95, width: 40.997, height: 29.282, latitude: -22.850865, longitude: -47.178447 },
+  { spotNumber: 'A21', x: 810, y: 95, width: 40.997, height: 29.282, latitude: -22.850868, longitude: -47.178472 },
+  { spotNumber: 'A22', x: 840, y: 95, width: 40.997, height: 29.282, latitude: -22.850875, longitude: -47.178498 },
+  { spotNumber: 'A23', x: 870, y: 95, width: 40.997, height: 29.282 },
+  { spotNumber: 'A24', x: 900, y: 95, width: 40.997, height: 29.282 },
+  { spotNumber: 'A25', x: 930, y: 95, width: 40.997, height: 29.282 },
+  { spotNumber: 'A26', x: 960, y: 95, width: 40.997, height: 29.282 },
+  { spotNumber: 'A27', x: 990, y: 95, width: 40.997, height: 29.282 },
+
+  { spotNumber: 'B1', x: 160, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B2', x: 190, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B3', x: 220, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B4', x: 250, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B5', x: 280, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B6', x: 310, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B7', x: 340, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B8', x: 370, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B9', x: 400, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B10', x: 430, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B11', x: 460, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B12', x: 490, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B13', x: 520, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B14', x: 550, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B15', x: 580, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B16', x: 610, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B17', x: 640, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B18', x: 670, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B19', x: 700, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B20', x: 730, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B21', x: 760, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B22', x: 790, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B23', x: 820, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B24', x: 850, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B25', x: 880, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B26', x: 910, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B27', x: 940, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B28', x: 970, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B29', x: 1000, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B30', x: 1030, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B31', x: 1060, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B32', x: 1090, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B33', x: 1120, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B34', x: 1150, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B35', x: 1180, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B36', x: 1210, y: 160, width: 40.997, height: 29.282 },
+  { spotNumber: 'B37', x: 1240, y: 160, width: 40.997, height: 29.282 },
+
+  { spotNumber: 'C1', x: 160, y: 280, width: 40.997, height: 29.282, latitude: -22.949165, longitude: -47.281774 },
+  { spotNumber: 'C2', x: 190, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C3', x: 220, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C4', x: 250, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C5', x: 280, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C6', x: 310, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C7', x: 340, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C8', x: 370, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C9', x: 400, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C10', x: 430, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C11', x: 460, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C12', x: 490, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C13', x: 520, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C14', x: 550, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C15', x: 580, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C16', x: 610, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C17', x: 640, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C18', x: 670, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C19', x: 700, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C20', x: 730, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C21', x: 760, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C22', x: 790, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C23', x: 820, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C24', x: 850, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C25', x: 880, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C26', x: 910, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C27', x: 940, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C28', x: 970, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C29', x: 1000, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C30', x: 1030, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C31', x: 1060, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C32', x: 1090, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C33', x: 1120, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C34', x: 1150, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C35', x: 1180, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C36', x: 1210, y: 280, width: 40.997, height: 29.282 },
+  { spotNumber: 'C37', x: 1240, y: 280, width: 40.997, height: 29.282 },
+
+  { spotNumber: 'D1', x: 550, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D2', x: 580, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D3', x: 610, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D4', x: 640, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D5', x: 670, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D6', x: 700, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D7', x: 730, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D8', x: 760, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D9', x: 790, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D10', x: 820, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D11', x: 850, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D12', x: 880, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D13', x: 910, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D14', x: 940, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D15', x: 970, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D16', x: 1000, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D17', x: 1030, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D18', x: 1060, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D19', x: 1090, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D20', x: 1120, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D21', x: 1150, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D22', x: 1180, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D23', x: 1210, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D24', x: 1240, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D25', x: 1270, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D26', x: 1300, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D27', x: 1330, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D28', x: 1360, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D29', x: 1390, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D30', x: 1420, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D31', x: 1450, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D32', x: 1480, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D33', x: 1510, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D34', x: 1540, y: 330, width: 40.997, height: 29.282 },
+  { spotNumber: 'D35', x: 1570, y: 330, width: 40.997, height: 29.282 },
+
+  { spotNumber: 'E1', x: 160, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E2', x: 190, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E3', x: 220, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E4', x: 250, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E5', x: 280, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E6', x: 310, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E7', x: 340, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E8', x: 370, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E9', x: 400, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E10', x: 430, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E11', x: 460, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E12', x: 490, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E13', x: 520, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E14', x: 550, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E15', x: 580, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E16', x: 610, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E17', x: 640, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E18', x: 670, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E19', x: 700, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E20', x: 730, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E21', x: 760, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E22', x: 790, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E23', x: 820, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E24', x: 850, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E25', x: 880, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E26', x: 910, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E27', x: 940, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E28', x: 970, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E29', x: 1000, y: 380, width: 40.997, height: 29.282 },
+  { spotNumber: 'E30', x: 1030, y: 380, width: 40.997, height: 29.282 },
+
+  { spotNumber: 'F1', x: 160, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F2', x: 190, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F3', x: 220, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F4', x: 250, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F5', x: 280, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F6', x: 310, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F7', x: 340, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F8', x: 370, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F9', x: 400, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F10', x: 430, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F11', x: 460, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F12', x: 490, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F13', x: 520, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F14', x: 550, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F15', x: 580, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F16', x: 610, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F17', x: 640, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F18', x: 670, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F19', x: 700, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F20', x: 730, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F21', x: 760, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F22', x: 790, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F23', x: 820, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F24', x: 850, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F25', x: 880, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F26', x: 910, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F27', x: 940, y: 430, width: 40.997, height: 29.282 },
+  { spotNumber: 'F28', x: 970, y: 430, width: 40.997, height: 29.282 },
+
+  { spotNumber: 'G1', x: 160, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G2', x: 190, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G3', x: 220, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G4', x: 250, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G5', x: 280, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G6', x: 310, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G7', x: 340, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G8', x: 370, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G9', x: 400, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G10', x: 430, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G11', x: 460, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G12', x: 490, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G13', x: 520, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G14', x: 550, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G15', x: 580, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G16', x: 610, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G17', x: 640, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G18', x: 670, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G19', x: 700, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G20', x: 730, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G21', x: 760, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G22', x: 790, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G23', x: 820, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G24', x: 850, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G25', x: 880, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G26', x: 910, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G27', x: 940, y: 480, width: 40.997, height: 29.282 },
+  { spotNumber: 'G28', x: 970, y: 480, width: 40.997, height: 29.282 },
+
+  { spotNumber: 'H1', x: 160, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H2', x: 190, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H3', x: 220, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H4', x: 250, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H5', x: 280, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H6', x: 310, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H7', x: 340, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H8', x: 370, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H9', x: 400, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H10', x: 430, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H11', x: 460, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H12', x: 490, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H13', x: 520, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H14', x: 550, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H15', x: 580, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H16', x: 610, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H17', x: 640, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H18', x: 670, y: 530, width: 40.997, height: 29.282 },
+  { spotNumber: 'H19', x: 700, y: 530, width: 40.997, height: 29.282 },
+];
+
+export function ParkingManager() {
+  const [spots, setSpots] = useState<ParkingSpot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [confirmedSpot, setConfirmedSpot] = useState<string | null>(null);
+  const [detectedSpotName, setDetectedSpotName] = useState<string | null>(null);
+  const [selectedSpotForEdit, setSelectedSpotForEdit] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [parkingName, setParkingName] = useState('Sistema de Gerenciamento de Estacionamento');
+  const [spotPositions, setSpotPositions] = useState<SpotPosition[]>(DEFAULT_SPOT_POSITIONS);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [gpsError, setGpsError] = useState(false);
+  const [newSpotNumber, setNewSpotNumber] = useState('');
+  const [rotation, setRotation] = useState(0);
+  const [showStats, setShowStats] = useState(true);
+
+  useEffect(() => {
+    // Verifica se o app já está instalado/rodando em modo standalone
+    const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches
+      || (window.navigator as any).standalone === true;
+    setIsStandalone(isStandaloneMode);
+
+    // Detecta se o dispositivo é iOS (iPhone/iPad)
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    setIsIOS(ios);
+
+    console.log('PWA Debug - Standalone:', isStandaloneMode, 'isIOS:', ios);
+
+    const handleBeforeInstallPrompt = (e: any) => {
+      console.log('PWA Debug - Evento beforeinstallprompt disparado! O site agora é oficialmente instalável.');
+      // Impede o prompt nativo automático para controlarmos quando exibir
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      // Mostra o banner personalizado automaticamente ao detectar que é instalável
+      setShowInstallBanner(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (isIOS) {
+      alert("Para instalar no iPhone/iPad: Toque no ícone de 'Compartilhar' no Safari e selecione 'Adicionar à Tela de Início'.");
+      return;
+    }
+    
+    if (!deferredPrompt) {
+      alert("Aguardando permissão do navegador para instalar. Certifique-se de que o site está em modo seguro (HTTPS ou localhost).");
+      return;
+    }
+
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
+
+  // Identificador único do usuário (persistido no navegador)
+  const [userId] = useState(() => {
+    let id = localStorage.getItem('parking_user_device_id');
+    if (!id) {
+      id = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      localStorage.setItem('parking_user_device_id', id);
+    }
+    return id;
+  });
+
+  // Efeito principal de Sincronização Firebase
+  useEffect(() => {
+    const parkingRef = ref(db, 'parking_config');
+    
+    // Escuta todas as mudanças no banco de dados e atualiza o estado local
+    const unsubscribe = onValue(parkingRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        if (data.spots) setSpots(Object.values(data.spots));
+        if (data.spotPositions) setSpotPositions(data.spotPositions);
+        if (data.rotation !== undefined) setRotation(data.rotation);
+        if (data.name) setParkingName(data.name);
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Efeito para auto-desocupar vagas após 8 horas
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      spots.forEach(spot => {
+        if (spot.is_occupied && spot.expires_at) {
+          const expirationTime = new Date(spot.expires_at).getTime();
+          if (now > expirationTime) {
+            // Vaga expirou, libera automaticamente
+            const spotRef = ref(db, `parking_config/spots/${spot.id}`);
+            update(spotRef, {
+              is_occupied: false,
+              occupied_by: null,
+              expires_at: null,
+              updated_at: new Date().toISOString(),
+            });
+          }
+        }
+      });
+    }, 60000); // Verifica a cada minuto
+    return () => clearInterval(interval);
+  }, [spots]);
+
+  useEffect(() => {
+    // Monitoramento contínuo do GPS - pausa se houver uma vaga confirmada
+    let watchId: number;
+    if ("geolocation" in navigator) {
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          if (confirmedSpot) return; // Trava a atualização se já confirmou
+          const { latitude, longitude } = position.coords;
+          setUserLocation({ lat: latitude, lng: longitude });
+          setGpsError(false);
+        },
+        (error) => {
+          console.error("Erro GPS:", error);
+          setGpsError(true);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      );
+    }
+
+    return () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+    };
+  }, [confirmedSpot]);
+
+  // Efeito reativo para encontrar e ocupar automaticamente a vaga livre mais próxima via GPS
+  useEffect(() => {
+    if (!userLocation || loading || isEditMode || spots.length === 0 || confirmedSpot) return;
+
+    // Filtra as vagas que possuem GPS cadastrado e associa ao status atual do banco
+    const candidates = spotPositions
+      .filter(pos => pos.latitude && pos.longitude)
+      .map(pos => ({
+        pos,
+        dbSpot: spots.find(s => s.spot_number === pos.spotNumber)
+      }))
+      .filter(item => item.dbSpot && !item.dbSpot.is_occupied);
+
+    if (candidates.length === 0) {
+      setDetectedSpotName(null);
+      return;
+    }
+
+    // Algoritmo de busca do vizinho mais próximo (distância Euclidiana quadrada)
+    let closestItem = candidates[0];
+    let minDistanceSq = Infinity;
+
+    candidates.forEach(item => {
+      const dLat = item.pos.latitude! - userLocation.lat;
+      const dLng = item.pos.longitude! - userLocation.lng;
+      const distSq = dLat * dLat + dLng * dLng;
+
+      if (distSq < minDistanceSq) {
+        minDistanceSq = distSq;
+        closestItem = item;
+      }
+    });
+
+    // Threshold de proximidade ajustado para ~7 metros
+    if (minDistanceSq < 0.000000004) {
+      setDetectedSpotName(closestItem.pos.spotNumber);
+    } else {
+      setDetectedSpotName(null);
+    }
+  }, [userLocation, spots, spotPositions, loading, isEditMode, confirmedSpot]);
+
+  const exportData = () => {
+    const data = { parkingName, spotPositions, spots, rotation };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `estacionamento_${parkingName.replace(/\s+/g, '_')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        const updates: any = {};
+        if (data.parkingName) updates['name'] = data.parkingName;
+        if (data.spotPositions) updates['spotPositions'] = data.spotPositions;
+        if (data.rotation !== undefined) updates['rotation'] = data.rotation;
+        
+        if (data.spots && Array.isArray(data.spots)) {
+          const spotsObj: Record<string, any> = {};
+          data.spots.forEach((s: any) => {
+            spotsObj[s.id || s.spot_number] = s;
+          });
+          updates['spots'] = spotsObj;
+        }
+
+        await update(ref(db, 'parking_config'), updates);
+        alert('Dados importados e sincronizados com sucesso para todos os usuários!');
+      } catch (err) {
+        alert('Erro ao importar arquivo. Verifique o formato JSON.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  function toggleSpot(spotId: string, currentStatus: boolean) {
+    const spot = spots.find(s => s.id === spotId);
+    const spotRef = ref(db, `parking_config/spots/${spotId}`);
+    const now = new Date();
+
+    if (!currentStatus) {
+      // Ocupando a vaga: define expiração para 8 horas
+      const expiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+      update(spotRef, {
+        is_occupied: true,
+        occupied_by: userId,
+        occupied_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        updated_at: now.toISOString(),
+      });
+    } else {
+      // Desocupando: verifica se é o dono ou admin
+      if (isAdmin || spot?.occupied_by === userId) {
+        update(spotRef, {
+          is_occupied: false,
+          occupied_by: null,
+          expires_at: null,
+          updated_at: now.toISOString(),
+        });
+      } else {
+        alert("Atenção: Apenas o usuário que ocupou esta vaga ou um administrador pode liberá-la.");
+      }
+    }
+  }
+
+  function initializeSpots() {
+    const initialSpots: Record<string, any> = {};
+
+    // Criar seções de A até G com 20 vagas, e H até 19 conforme solicitado
+    const sections = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    for (const section of sections) {
+      const limit = section === 'H' ? 19 : 20;
+      for (let i = 1; i <= limit; i++) {
+        const num = `${section}${i}`;
+        initialSpots[num] = {
+          id: num,
+          spot_number: num,
+          is_occupied: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+      }
+    }
+    set(ref(db, 'parking_config'), {
+      spots: initialSpots,
+      spotPositions: DEFAULT_SPOT_POSITIONS,
+      rotation: 0,
+      name: 'Sistema de Gerenciamento de Estacionamento'
+    });
+  }
+
+  function updateSpotPosition(spotNumber: string, x: number, y: number) {
+    const newPositions = spotPositions.map(pos =>
+        pos.spotNumber === spotNumber ? { ...pos, x, y } : pos
+    );
+    set(ref(db, 'parking_config/spotPositions'), newPositions);
+  }
+
+  function updateSpotRotation(spotNumber: string, rotation: number) {
+    const newPositions = spotPositions.map(pos =>
+        pos.spotNumber === spotNumber ? { ...pos, rotation } : pos
+    );
+    set(ref(db, 'parking_config/spotPositions'), newPositions);
+  }
+
+  function deleteSpot(spotNumber: string) {
+    const newPositions = spotPositions.filter(pos => pos.spotNumber !== spotNumber);
+    set(ref(db, 'parking_config/spotPositions'), newPositions);
+  }
+
+  function updateSpotLatitude(spotNumber: string, latitude: number) {
+    const newPositions = spotPositions.map(pos =>
+        pos.spotNumber === spotNumber ? { ...pos, latitude } : pos
+    );
+    set(ref(db, 'parking_config/spotPositions'), newPositions);
+  }
+
+  function updateSpotLongitude(spotNumber: string, longitude: number) {
+    const newPositions = spotPositions.map(pos =>
+        pos.spotNumber === spotNumber ? { ...pos, longitude } : pos
+    );
+    set(ref(db, 'parking_config/spotPositions'), newPositions);
+  }
+
+  function handleAddSpot() {
+    const newPosition = newSpotNumber.trim().toUpperCase();
+    if (!newPosition) return;
+    if (spotPositions.some(spot => spot.spotNumber === newPosition)) return;
+
+    const newPositions = [
+      ...spotPositions,
+      {
+        spotNumber: newPosition,
+        x: 100,
+        y: 100,
+        width: 40.997,
+        height: 29.282
+      }
+    ];
+    set(ref(db, 'parking_config/spotPositions'), newPositions);
+    setNewSpotNumber('');
+  }
+
+  const markerNumbers = new Set(spotPositions.map(p => p.spotNumber));
+  const totalMarkers = spotPositions.length;
+  const occupiedCount = spots.filter(s => 
+    s.is_occupied && markerNumbers.has(s.spot_number)
+  ).length;
+  const availableCount = totalMarkers - occupiedCount;
+
+  return (
+    <div className="h-screen bg-gray-100 flex flex-col overflow-hidden">
+      <div className="w-full h-full p-2 sm:p-4 flex flex-col landscape:flex-row gap-2 sm:gap-4 overflow-hidden">
+        {(isEditMode || (spots.length === 0 && !loading)) && (
+          <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 shrink-0 landscape:w-72 landscape:h-full landscape:overflow-y-auto transition-all">
+
+            {isEditMode && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-dashed border-blue-300 bg-blue-50 p-4">
+                <p className="text-xs text-blue-700 mb-2 font-medium">
+                  Clique em uma vaga para editar coordenadas ou arraste-a para mudar a posição.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+                  <input
+                    type="text"
+                    placeholder="Nova vaga (ex: E1)"
+                    value={newSpotNumber}
+                    onChange={e => setNewSpotNumber(e.target.value)}
+                    className="w-full sm:w-auto px-3 py-2 border-2 border-blue-200 rounded-lg focus:border-blue-500 focus:outline-none"
+                  />
+                  <button
+                    onClick={handleAddSpot}
+                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                  >
+                    Adicionar vaga
+                  </button>
+                </div>
+              </div>
+
+              {selectedSpotForEdit && (
+                <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4 shadow-sm animate-in fade-in zoom-in-95">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-yellow-800">Editando Vaga: {selectedSpotForEdit}</h3>
+                    <button onClick={() => setSelectedSpotForEdit(null)} className="text-yellow-600 hover:text-yellow-800">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-yellow-700 mb-1 uppercase">Latitude</label>
+                      <input
+                        type="number"
+                        step="0.000001"
+                        value={spotPositions.find(p => p.spotNumber === selectedSpotForEdit)?.latitude || ''}
+                        onChange={(e) => updateSpotLatitude(selectedSpotForEdit, parseFloat(e.target.value))}
+                        className="w-full px-3 py-2 border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-400 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-yellow-700 mb-1 uppercase">Longitude</label>
+                      <input
+                        type="number"
+                        step="0.000001"
+                        value={spotPositions.find(p => p.spotNumber === selectedSpotForEdit)?.longitude || ''}
+                        onChange={(e) => updateSpotLongitude(selectedSpotForEdit, parseFloat(e.target.value))}
+                        className="w-full px-3 py-2 border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-400 outline-none"
+                      />
+                    </div>
+                  </div>
+                  {userLocation && (
+                    <button
+                      onClick={() => {
+                        updateSpotLatitude(selectedSpotForEdit, userLocation.lat);
+                        updateSpotLongitude(selectedSpotForEdit, userLocation.lng);
+                      }}
+                      className="mt-4 w-full flex items-center justify-center gap-2 bg-yellow-600 text-white font-bold py-2 rounded-lg hover:bg-yellow-700 transition-all shadow-md"
+                    >
+                      <Crosshair className="w-4 h-4" />
+                      Usar Minha Localização Atual GPS
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {spots.length === 0 && !loading && (
+            <div className="text-center py-8">
+              <p className="text-gray-600 mb-4">Nenhuma vaga cadastrada</p>
+              <button
+                onClick={initializeSpots}
+                className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2 mx-auto"
+              >
+                <Plus className="w-5 h-5" />
+                Inicializar Vagas
+              </button>
+            </div>
+            )}
+          </div>
+        )}
+
+        {spots.length > 0 && (
+          <div className="bg-white rounded-xl shadow-lg p-2 sm:p-4 flex-grow relative flex flex-col min-h-0 overflow-hidden">
+            <h2 className="text-xs sm:text-lg font-bold text-gray-400 mb-2 shrink-0 px-2">Clique nas vagas para reservar</h2>
+            
+            {/* Overlay Consolidado no Canto Superior Direito */}
+            <div className="absolute top-4 right-4 z-20 flex flex-col gap-3 items-end pointer-events-none max-h-[90%] overflow-y-auto custom-scrollbar p-2">
+              
+              {/* Card de Localização GPS */}
+              <div className={`p-3 rounded-xl border backdrop-blur-md shadow-lg pointer-events-auto transition-all min-w-[180px] ${confirmedSpot ? 'bg-green-50/40 border-green-200/50' : 'bg-indigo-50/40 border-indigo-200/50'}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <MapPin className={`w-3 h-3 ${confirmedSpot ? 'text-green-600' : 'text-indigo-600'}`} />
+                  <p className={`text-[10px] font-bold uppercase tracking-tight ${confirmedSpot ? 'text-green-600' : 'text-indigo-600'}`}>Localização</p>
+                </div>
+                {userLocation ? (
+                  <div className="space-y-1">
+                    {confirmedSpot ? (
+                      <div className="bg-white/40 backdrop-blur-sm p-1.5 rounded-md">
+                        <p className="text-[10px] font-bold text-green-800 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Vaga: {confirmedSpot}
+                        </p>
+                        <button 
+                          onClick={() => {
+                            const spot = spots.find(s => s.spot_number === confirmedSpot);
+                            if (spot) toggleSpot(spot.id, true);
+                            setConfirmedSpot(null);
+                          }}
+                          className="mt-1 w-full text-[9px] font-bold bg-green-600/60 text-white px-2 py-1 rounded hover:bg-green-700/80 transition-colors flex items-center justify-center gap-1"
+                        >
+                          <Unlock className="w-2.5 h-2.5" /> Liberar
+                        </button>
+                      </div>
+                    ) : detectedSpotName ? (
+                      <div className="bg-white/40 backdrop-blur-sm border border-indigo-200/30 p-1.5 rounded-md shadow-sm">
+                        <p className="text-[10px] font-bold text-indigo-900">Sugerida: {detectedSpotName}</p>
+                        <button 
+                          onClick={() => {
+                            const targetSpot = spots.find(s => s.spot_number === detectedSpotName);
+                            if (targetSpot) {
+                              toggleSpot(targetSpot.id, false);
+                              setConfirmedSpot(detectedSpotName);
+                              setDetectedSpotName(null);
+                            }
+                          }}
+                          className="mt-1 w-full text-[9px] font-bold bg-indigo-600/60 text-white px-2 py-1 rounded hover:bg-indigo-700/80 transition-colors"
+                        >
+                          Confirmar Ocupação
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 py-0.5">
+                        <Radar className="w-3 h-3 text-indigo-600 animate-pulse" />
+                        <p className="text-[10px] text-indigo-600 font-bold italic">Buscando...</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-indigo-600 italic">Sinal GPS...</p>
+                )}
+              </div>
+
+              {/* Grupo de Botões de Ação */}
+              <div className="flex flex-wrap gap-2 justify-end pointer-events-auto">
+                {!isAdmin ? (
+                  <button
+                    onClick={() => {
+                      const pass = prompt('Digite a senha para acessar as configurações:');
+                      if (pass === 'ObaFacilitis2026') setIsAdmin(true);
+                      else if (pass !== null) alert('Senha incorreta!');
+                    }}
+                    className="p-2.5 rounded-lg bg-gray-600/40 backdrop-blur-md text-gray-700 hover:bg-gray-600/60 transition-all border border-white/30 shadow-sm"
+                    title="Administração"
+                  >
+                    <Lock className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setIsEditMode(prev => !prev)}
+                      className={`p-2.5 rounded-lg border backdrop-blur-md transition-all shadow-sm ${
+                        isEditMode ? 'bg-yellow-500/40 border-yellow-200/50 text-yellow-700' : 'bg-blue-500/40 border-blue-200/50 text-blue-700'
+                      }`}
+                      title={isEditMode ? 'Sair do modo edição' : 'Modo edição'}
+                    >
+                      {isEditMode ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newRot = rotation - 90;
+                        set(ref(db, 'parking_config/rotation'), newRot);
+                      }}
+                      className="p-2.5 rounded-lg bg-indigo-500/40 backdrop-blur-md text-indigo-700 border border-indigo-200/50 shadow-sm hover:bg-indigo-500/60"
+                      title="Girar vagas"
+                    >
+                      <Radar className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={exportData}
+                      className="p-2.5 rounded-lg bg-green-600/40 backdrop-blur-md text-green-700 border border-green-200/50 shadow-sm hover:bg-green-600/60"
+                      title="Exportar"
+                    >
+                      <Save className="w-4 h-4" />
+                    </button>
+                    <label className="p-2.5 rounded-lg bg-orange-600/40 backdrop-blur-md text-orange-700 border border-orange-200/50 shadow-sm hover:bg-orange-600/60 cursor-pointer">
+                      <Upload className="w-4 h-4" />
+                      <input type="file" accept=".json" onChange={importData} className="hidden" />
+                    </label>
+                    <button
+                      onClick={() => { setIsAdmin(false); setIsEditMode(false); }}
+                      className="p-2.5 rounded-lg bg-red-500/40 backdrop-blur-md text-red-700 border border-red-200/50 shadow-sm hover:bg-red-500/60"
+                      title="Sair do Admin"
+                    >
+                      <Unlock className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => setShowStats(!showStats)}
+                  className="p-2.5 rounded-lg bg-white/40 backdrop-blur-md text-gray-600 border border-gray-200/50 shadow-sm hover:bg-white/60 transition-all"
+                  title={showStats ? "Ocultar estatísticas" : "Ver estatísticas"}
+                >
+                  {showStats ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                {!isStandalone && (
+                  <button
+                    onClick={handleInstallClick}
+                    className="p-2.5 rounded-lg bg-indigo-600/40 backdrop-blur-md text-indigo-700 border border-indigo-200/50 shadow-sm hover:bg-indigo-600/60"
+                    title="Instalar App"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Estatísticas */}
+              {showStats && (
+                <div className="flex flex-col gap-2 pointer-events-none">
+                  <div className="bg-blue-50/40 backdrop-blur-md p-2.5 rounded-lg border border-blue-200/50 shadow-sm text-center min-w-[100px]">
+                    <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Total</p>
+                    <p className="text-xl font-black text-blue-700 leading-none">{totalMarkers}</p>
+                  </div>
+                  <div className="bg-green-50/40 backdrop-blur-md p-2.5 rounded-lg border border-green-200/50 shadow-sm text-center min-w-[100px]">
+                    <p className="text-[10px] text-green-600 font-bold uppercase tracking-wider">Livres</p>
+                    <p className="text-xl font-black text-green-700 leading-none">{availableCount}</p>
+                  </div>
+                  <div className="bg-red-50/40 backdrop-blur-md p-2.5 rounded-lg border border-red-200/50 shadow-sm text-center min-w-[100px]">
+                    <p className="text-[10px] text-red-600 font-bold uppercase tracking-wider">Ocupadas</p>
+                    <p className="text-xl font-black text-red-700 leading-none">{occupiedCount}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex-grow min-h-0">
+              <InteractiveParkingMap
+                spots={spots}
+                spotPositions={spotPositions}
+                onSpotClick={toggleSpot}
+                isEditing={isEditMode}
+                onUpdatePosition={updateSpotPosition}
+                rotation={rotation}
+                onUpdateRotation={updateSpotRotation}
+                onDeleteSpot={deleteSpot}
+                selectedSpot={selectedSpotForEdit}
+                onSelectSpot={setSelectedSpotForEdit}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
