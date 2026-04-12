@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { db, ParkingSpot } from '../lib/supabase';
-import { ref, onValue, set, update } from 'firebase/database';
+import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import { InteractiveParkingMap } from './InteractiveParkingMap';
-import { Plus, MapPin, Lock, Unlock, CheckCircle2, Radar, X, Crosshair, Download, Upload, Save, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, MapPin, Lock, Unlock, CheckCircle2, Radar, X, Crosshair, Download, Upload, Save, ChevronDown, ChevronUp, Maximize, AlertTriangle } from 'lucide-react';
 
 interface SpotPosition {
   spotNumber: string;
@@ -27,8 +27,8 @@ interface BeforeInstallPromptEvent extends Event {
 
 const STORAGE_KEY = 'parking_spot_positions';
 const STORAGE_KEY_ROTATION = 'parking_rotation';
-const SPOT_WIDTH = 45.1;
-const SPOT_HEIGHT = 32.2;
+const SPOT_WIDTH = 60.0;
+const SPOT_HEIGHT = 18.0;
 
 const DEFAULT_SPOT_POSITIONS: SpotPosition[] = [
   { spotNumber: 'A1', x: 180, y: 95, width: SPOT_WIDTH, height: SPOT_HEIGHT, latitude: -22.850745, longitude: -47.178021 },
@@ -299,6 +299,9 @@ export function ParkingManager() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [gpsError, setGpsError] = useState(false);
   const [newSpotNumber, setNewSpotNumber] = useState('');
+  const [firestoreError, setFirestoreError] = useState<string | null>(null);
+  const [globalWidth, setGlobalWidth] = useState(45.0);
+  const [globalHeight, setGlobalHeight] = useState(18.0);
   const [rotation, setRotation] = useState(0);
   const [showStats, setShowStats] = useState(true);
 
@@ -360,19 +363,33 @@ export function ParkingManager() {
 
   // Efeito principal de Sincronização Firebase
   useEffect(() => {
-    const parkingRef = ref(db, 'parking_config');
+    const parkingDoc = doc(db, 'config', 'parking');
     
-    // Escuta todas as mudanças no banco de dados e atualiza o estado local
-    const unsubscribe = onValue(parkingRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        if (data.spots) setSpots(Object.values(data.spots));
-        if (data.spotPositions) setSpotPositions(data.spotPositions);
-        if (data.rotation !== undefined) setRotation(data.rotation);
-        if (data.name) setParkingName(data.name);
+    const unsubscribe = onSnapshot(
+      parkingDoc, 
+      (snapshot) => {
+        console.log("Firestore Update - Existe documento?", snapshot.exists());
+        const data = snapshot.data();
+        if (data) {
+          if (data.spots) setSpots(Object.values(data.spots));
+          if (data.spotPositions) setSpotPositions(data.spotPositions);
+          if (data.spotWidth) setGlobalWidth(data.spotWidth);
+          if (data.spotHeight) setGlobalHeight(data.spotHeight);
+          if (data.rotation !== undefined) setRotation(data.rotation);
+          if (data.name) setParkingName(data.name);
+        } else {
+          console.log("Documento não encontrado no Firestore. É necessário inicializar.");
+          setFirestoreError("Banco de dados vazio. Clique em 'Inicializar Vagas' no menu de Admin.");
+          setSpots([]);
+        }
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Erro crítico no Firestore:", error);
+        setFirestoreError(error.message);
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    );
 
     return () => unsubscribe();
   }, []);
@@ -386,12 +403,12 @@ export function ParkingManager() {
           const expirationTime = new Date(spot.expires_at).getTime();
           if (now > expirationTime) {
             // Vaga expirou, libera automaticamente
-            const spotRef = ref(db, `parking_config/spots/${spot.id}`);
-            update(spotRef, {
-              is_occupied: false,
-              occupied_by: null,
-              expires_at: null,
-              updated_at: new Date().toISOString(),
+            const docRef = doc(db, 'config', 'parking');
+            updateDoc(docRef, {
+              [`spots.${spot.id}.is_occupied`]: false,
+              [`spots.${spot.id}.occupied_by`]: null,
+              [`spots.${spot.id}.expires_at`]: null,
+              [`spots.${spot.id}.updated_at`]: new Date().toISOString(),
             });
           }
         }
@@ -467,7 +484,7 @@ export function ParkingManager() {
   }, [userLocation, spots, spotPositions, loading, isEditMode, confirmedSpot]);
 
   const exportData = () => {
-    const data = { parkingName, spotPositions, spots, rotation };
+    const data = { parkingName, spotPositions, spots, rotation, spotWidth: globalWidth, spotHeight: globalHeight };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -488,6 +505,8 @@ export function ParkingManager() {
         if (data.parkingName) updates['name'] = data.parkingName;
         if (data.spotPositions) updates['spotPositions'] = data.spotPositions;
         if (data.rotation !== undefined) updates['rotation'] = data.rotation;
+        if (data.spotWidth) updates['spotWidth'] = data.spotWidth;
+        if (data.spotHeight) updates['spotHeight'] = data.spotHeight;
         
         if (data.spots && Array.isArray(data.spots)) {
           const spotsObj: Record<string, any> = {};
@@ -497,7 +516,7 @@ export function ParkingManager() {
           updates['spots'] = spotsObj;
         }
 
-        await update(ref(db, 'parking_config'), updates);
+        await updateDoc(doc(db, 'config', 'parking'), updates);
         alert('Dados importados e sincronizados com sucesso para todos os usuários!');
       } catch (err) {
         alert('Erro ao importar arquivo. Verifique o formato JSON.');
@@ -508,7 +527,7 @@ export function ParkingManager() {
 
   function toggleSpot(spotId: string, currentStatus: boolean) {
     const spot = spots.find(s => s.id === spotId);
-    const spotRef = ref(db, `parking_config/spots/${spotId}`);
+    const docRef = doc(db, 'config', 'parking');
     const now = new Date();
 
     if (!currentStatus) {
@@ -521,21 +540,21 @@ export function ParkingManager() {
 
       // Ocupando a vaga: define expiração para 8 horas
       const expiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-      update(spotRef, {
-        is_occupied: true,
-        occupied_by: userId,
-        occupied_at: now.toISOString(),
-        expires_at: expiresAt.toISOString(),
-        updated_at: now.toISOString(),
+      updateDoc(docRef, {
+        [`spots.${spotId}.is_occupied`]: true,
+        [`spots.${spotId}.occupied_by`]: userId,
+        [`spots.${spotId}.occupied_at`]: now.toISOString(),
+        [`spots.${spotId}.expires_at`]: expiresAt.toISOString(),
+        [`spots.${spotId}.updated_at`]: now.toISOString(),
       });
     } else {
       // Desocupando: verifica se é o dono ou admin
       if (isAdmin || spot?.occupied_by === userId) {
-        update(spotRef, {
-          is_occupied: false,
-          occupied_by: null,
-          expires_at: null,
-          updated_at: now.toISOString(),
+        updateDoc(docRef, {
+          [`spots.${spotId}.is_occupied`]: false,
+          [`spots.${spotId}.occupied_by`]: null,
+          [`spots.${spotId}.expires_at`]: null,
+          [`spots.${spotId}.updated_at`]: now.toISOString(),
         });
       } else {
         alert("Atenção: Apenas o usuário que ocupou esta vaga ou um administrador pode liberá-la.");
@@ -543,7 +562,43 @@ export function ParkingManager() {
     }
   }
 
-  function initializeSpots() {
+  async function resetDatabase() {
+    if (!confirm("ATENÇÃO: Isso apagará todas as posições atuais e forçará as novas dimensões (18x12). Deseja continuar?")) return;
+    
+    setLoading(true);
+    const initialSpots: Record<string, any> = {};
+    const sections = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    for (const section of sections) {
+      const limit = section === 'H' ? 19 : 20;
+      for (let i = 1; i <= limit; i++) {
+        const num = `${section}${i}`;
+        initialSpots[num] = {
+          id: num,
+          spot_number: num,
+          is_occupied: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+      }
+    }
+
+    try {
+      await setDoc(doc(db, 'config', 'parking'), {
+        spots: initialSpots,
+        spotPositions: DEFAULT_SPOT_POSITIONS,
+        spotWidth: 45.0,
+        spotHeight: 18.0,
+        rotation: 0,
+        name: 'Sistema de Gerenciamento de Estacionamento'
+      });
+      alert('Banco de dados resetado com sucesso!');
+    } catch (err) {
+      alert('Erro ao resetar banco.');
+    }
+    setLoading(false);
+  }
+
+  async function initializeSpots() {
     const initialSpots: Record<string, any> = {};
 
     // Criar seções de A até G com 20 vagas, e H até 19 conforme solicitado
@@ -561,45 +616,86 @@ export function ParkingManager() {
         };
       }
     }
-    set(ref(db, 'parking_config'), {
-      spots: initialSpots,
-      spotPositions: DEFAULT_SPOT_POSITIONS,
-      rotation: 0,
-      name: 'Sistema de Gerenciamento de Estacionamento'
-    });
+    try {
+      console.log("Tentando inicializar banco de dados...");
+      await setDoc(doc(db, 'config', 'parking'), {
+        spots: initialSpots,
+        spotPositions: DEFAULT_SPOT_POSITIONS,
+        spotWidth: 45.0,
+        spotHeight: 18.0,
+        rotation: 0,
+        name: 'Sistema de Gerenciamento de Estacionamento'
+      });
+      alert('Banco de dados inicializado com sucesso!');
+    } catch (err) {
+      console.error("Erro ao inicializar:", err);
+      alert('Erro de permissão no Firebase. Verifique as Rules.');
+    }
   }
 
   function updateSpotPosition(spotNumber: string, x: number, y: number) {
     const newPositions = spotPositions.map(pos =>
         pos.spotNumber === spotNumber ? { ...pos, x, y } : pos
     );
-    set(ref(db, 'parking_config/spotPositions'), newPositions);
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
   }
 
   function updateSpotRotation(spotNumber: string, rotation: number) {
     const newPositions = spotPositions.map(pos =>
         pos.spotNumber === spotNumber ? { ...pos, rotation } : pos
     );
-    set(ref(db, 'parking_config/spotPositions'), newPositions);
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
   }
 
   function deleteSpot(spotNumber: string) {
     const newPositions = spotPositions.filter(pos => pos.spotNumber !== spotNumber);
-    set(ref(db, 'parking_config/spotPositions'), newPositions);
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
+  }
+
+  function updateSpotWidth(spotNumber: string, width: number) {
+    const newPositions = spotPositions.map(pos =>
+        pos.spotNumber === spotNumber ? { ...pos, width } : pos
+    );
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
+  }
+
+  function updateSpotHeight(spotNumber: string, height: number) {
+    const newPositions = spotPositions.map(pos =>
+        pos.spotNumber === spotNumber ? { ...pos, height } : pos
+    );
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
   }
 
   function updateSpotLatitude(spotNumber: string, latitude: number) {
     const newPositions = spotPositions.map(pos =>
         pos.spotNumber === spotNumber ? { ...pos, latitude } : pos
     );
-    set(ref(db, 'parking_config/spotPositions'), newPositions);
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
   }
 
   function updateSpotLongitude(spotNumber: string, longitude: number) {
     const newPositions = spotPositions.map(pos =>
         pos.spotNumber === spotNumber ? { ...pos, longitude } : pos
     );
-    set(ref(db, 'parking_config/spotPositions'), newPositions);
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
+  }
+
+  function updateGlobalConfig(field: string, value: number) {
+    updateDoc(doc(db, 'config', 'parking'), { [field]: value });
+  }
+
+  function applyDimensionsToAll() {
+    if (!confirm("Isso irá resetar o tamanho de TODAS as vagas para os valores atuais. Deseja continuar?")) return;
+    
+    const newPositions = spotPositions.map(pos => ({
+      ...pos,
+      width: globalWidth,
+      height: globalHeight
+    }));
+    
+    updateDoc(doc(db, 'config', 'parking'), { 
+      spotPositions: newPositions 
+    });
   }
 
   function handleAddSpot() {
@@ -613,11 +709,11 @@ export function ParkingManager() {
         spotNumber: newPosition,
         x: 100,
         y: 100,
-        width: SPOT_WIDTH,
-        height: SPOT_HEIGHT
+        width: globalWidth,
+        height: globalHeight
       }
     ];
-    set(ref(db, 'parking_config/spotPositions'), newPositions);
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
     setNewSpotNumber('');
   }
 
@@ -630,12 +726,75 @@ export function ParkingManager() {
 
   return (
     <div className="h-screen bg-gray-100 flex flex-col overflow-hidden">
+      {firestoreError && (
+        <div className="bg-red-600 text-white p-2 text-center text-xs font-bold flex items-center justify-center gap-2 z-[100]">
+          <AlertTriangle className="w-4 h-4" />
+          Erro de Conexão: {firestoreError === 'permission-denied' 
+            ? 'Acesso negado. Verifique as "Rules" no Console do Firebase.' 
+            : firestoreError}
+        </div>
+      )}
+
       <div className="w-full h-full p-2 sm:p-4 flex flex-col landscape:flex-row gap-2 sm:gap-4 overflow-hidden">
-        {(isEditMode || (spots.length === 0 && !loading)) && (
-          <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 shrink-0 landscape:w-72 landscape:h-full landscape:overflow-y-auto transition-all">
+        {(isEditMode || (spots.length === 0 && !loading) || firestoreError) && (
+          <div className="bg-white rounded-xl shadow-lg p-3 sm:p-4 shrink-0 landscape:w-80 landscape:h-full landscape:overflow-y-auto transition-all custom-scrollbar z-50">
+            
+            {firestoreError && !isEditMode && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs">
+                <p className="font-bold flex items-center gap-2 mb-1">
+                  <AlertTriangle className="w-4 h-4" /> Status do Sistema
+                </p>
+                {firestoreError}
+                <p className="mt-2 font-semibold">Acesse o cadeado (Admin) para configurar.</p>
+              </div>
+            )}
 
             {isEditMode && (
             <div className="space-y-4">
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
+                <h3 className="text-xs font-black text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                  <Maximize className="w-3 h-3" /> Configurações de Exibição
+                </h3>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-600">LARGURA VAGAS</label>
+                    <input 
+                      type="number" 
+                      value={globalWidth} 
+                      onChange={(e) => updateGlobalConfig('spotWidth', parseFloat(e.target.value))}
+                      className="w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-400 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-600">ALTURA VAGAS</label>
+                    <input 
+                      type="number" 
+                      value={globalHeight} 
+                      onChange={(e) => updateGlobalConfig('spotHeight', parseFloat(e.target.value))}
+                      className="w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-400 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-600">GIRO DO MAPA (GRAUS)</label>
+                  <input 
+                    type="number" 
+                    value={rotation} 
+                    onChange={(e) => updateGlobalConfig('rotation', parseFloat(e.target.value))}
+                    className="w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-400 outline-none"
+                  />
+                </div>
+
+                <button
+                  onClick={applyDimensionsToAll}
+                  className="w-full py-1.5 bg-gray-800 text-white text-[10px] font-bold rounded hover:bg-black transition-colors uppercase tracking-tight"
+                >
+                  Redimensionar Vagas Atuais
+                </button>
+              </div>
+
               <div className="rounded-lg border border-dashed border-blue-300 bg-blue-50 p-4">
                 <p className="text-xs text-blue-700 mb-2 font-medium">
                   Clique em uma vaga para editar coordenadas ou arraste-a para mudar a posição.
@@ -683,6 +842,33 @@ export function ParkingManager() {
                         step="0.000001"
                         value={spotPositions.find(p => p.spotNumber === selectedSpotForEdit)?.longitude || ''}
                         onChange={(e) => updateSpotLongitude(selectedSpotForEdit, parseFloat(e.target.value))}
+                        className="w-full px-3 py-2 border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-400 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-yellow-700 mb-1 uppercase">Largura</label>
+                      <input
+                        type="number"
+                        value={spotPositions.find(p => p.spotNumber === selectedSpotForEdit)?.width || ''}
+                        onChange={(e) => updateSpotWidth(selectedSpotForEdit, parseFloat(e.target.value))}
+                        className="w-full px-3 py-2 border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-400 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-yellow-700 mb-1 uppercase">Altura</label>
+                      <input
+                        type="number"
+                        value={spotPositions.find(p => p.spotNumber === selectedSpotForEdit)?.height || ''}
+                        onChange={(e) => updateSpotHeight(selectedSpotForEdit, parseFloat(e.target.value))}
+                        className="w-full px-3 py-2 border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-400 outline-none"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-bold text-yellow-700 mb-1 uppercase">Giro Individual (Graus)</label>
+                      <input
+                        type="number"
+                        value={spotPositions.find(p => p.spotNumber === selectedSpotForEdit)?.rotation || 0}
+                        onChange={(e) => updateSpotRotation(selectedSpotForEdit, parseFloat(e.target.value))}
                         className="w-full px-3 py-2 border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-400 outline-none"
                       />
                     </div>
@@ -807,7 +993,7 @@ export function ParkingManager() {
                     <button
                       onClick={() => {
                         const newRot = rotation - 90;
-                        set(ref(db, 'parking_config/rotation'), newRot);
+                        updateDoc(doc(db, 'config', 'parking'), { rotation: newRot });
                       }}
                       className="p-2.5 rounded-lg bg-indigo-500/40 backdrop-blur-md text-indigo-700 border border-indigo-200/50 shadow-sm hover:bg-indigo-500/60"
                       title="Girar vagas"
@@ -825,6 +1011,13 @@ export function ParkingManager() {
                       <Upload className="w-4 h-4" />
                       <input type="file" accept=".json" onChange={importData} className="hidden" />
                     </label>
+                    <button
+                      onClick={resetDatabase}
+                      className="p-2.5 rounded-lg bg-black text-white border border-red-500 shadow-sm hover:bg-red-900 transition-all"
+                      title="RESETAR TUDO (Cuidado!)"
+                    >
+                      <AlertTriangle className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => { setIsAdmin(false); setIsEditMode(false); }}
                       className="p-2.5 rounded-lg bg-red-500/40 backdrop-blur-md text-red-700 border border-red-200/50 shadow-sm hover:bg-red-500/60"
@@ -883,6 +1076,8 @@ export function ParkingManager() {
                 onDeleteSpot={deleteSpot}
                 selectedSpot={selectedSpotForEdit}
                 onSelectSpot={setSelectedSpotForEdit}
+                globalWidth={globalWidth}
+                globalHeight={globalHeight}
               />
             </div>
           </div>

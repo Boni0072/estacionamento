@@ -1,18 +1,17 @@
 import { initializeApp } from "firebase/app";
-import { getDatabase } from "firebase/database";
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCL1fXng9IpMunUFm03VIqAJcdxHcjBv9E",
-  authDomain: "oab-projeto.firebaseapp.com",
-  databaseURL: "https://oab-projeto-default-rtdb.firebaseio.com",
-  projectId: "oab-projeto",
-  storageBucket: "oab-projeto.firebasestorage.app",
-  messagingSenderId: "274702967007",
-  appId: "1:274702967007:web:7dd45811daacb8a4afc96a"
+  apiKey: "AIzaSyCWDboYZuynlh11Hi2UDbYy3-sGRbdirdI",
+  authDomain: "estacionamentooba-e4a70.firebaseapp.com",
+  projectId: "estacionamentooba-e4a70",
+  storageBucket: "estacionamentooba-e4a70.firebasestorage.app",
+  messagingSenderId: "790943886746",
+  appId: "1:790943886746:web:c4967c33c74cbdca92de23"
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getDatabase(app);
+export const db = getFirestore(app);
 
 export interface ParkingSpot {
   id: string;

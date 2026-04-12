@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { ParkingSpot } from '../lib/supabase';
-import { ZoomIn, ZoomOut, Maximize } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, ImageOff } from 'lucide-react';
 
 interface SpotPosition {
   spotNumber: string;
@@ -24,10 +24,9 @@ interface InteractiveParkingMapProps {
   onDeleteSpot: (spotNumber: string) => void;
   selectedSpot: string | null;
   onSelectSpot: (spotNumber: string | null) => void;
+  globalWidth: number;
+  globalHeight: number;
 }
-
-const ORIGINAL_IMAGE_WIDTH = 1536;
-const ORIGINAL_IMAGE_HEIGHT = 1024;
 
 export function InteractiveParkingMap({
   spots,
@@ -40,6 +39,8 @@ export function InteractiveParkingMap({
   onDeleteSpot,
   selectedSpot,
   onSelectSpot,
+  globalWidth,
+  globalHeight,
 }: InteractiveParkingMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -48,6 +49,8 @@ export function InteractiveParkingMap({
   const [hoveredSpot, setHoveredSpot] = useState<string | null>(null);
   const [draggingSpot, setDraggingSpot] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [imgSize, setImgSize] = useState({ w: 1536, h: 1024 });
+  const [imageError, setImageError] = useState(false);
   const [zoom, setZoom] = useState(1);
 
   const toggleFullscreen = () => {
@@ -65,15 +68,15 @@ export function InteractiveParkingMap({
     const canvas = canvasRef.current;
     if (!canvas || canvas.width === 0 || canvas.height === 0) return spotPositions;
 
-    const scaleX = canvas.width / ORIGINAL_IMAGE_WIDTH;
-    const scaleY = canvas.height / ORIGINAL_IMAGE_HEIGHT;
+    const scaleX = canvas.width / imgSize.w;
+    const scaleY = canvas.height / imgSize.h;
 
     return spotPositions.map(pos => ({
       ...pos,
       x: pos.x * scaleX,
       y: pos.y * scaleY,
-      width: pos.width * scaleX,
-      height: pos.height * scaleY,
+      width: globalWidth * scaleX,
+      height: globalHeight * scaleY,
     }));
   };
 
@@ -184,8 +187,8 @@ export function InteractiveParkingMap({
       const canvas = canvasRef.current;
       // Busca o tamanho real da vaga sendo arrastada para um limite preciso
       const draggingPos = spotPositions.find(p => p.spotNumber === draggingSpot);
-      const spotW = draggingPos?.width || 45.1;
-      const spotH = draggingPos?.height || 32.2;
+      const spotW = globalWidth || 45.0;
+      const spotH = globalHeight || 12.0;
 
       const maxX = canvas.width - spotW;
       const maxY = canvas.height - spotH;
@@ -220,10 +223,16 @@ export function InteractiveParkingMap({
     img.onload = () => {
       canvas.width = img.width;
       canvas.height = img.height;
+      setImgSize({ w: img.width, h: img.height });
 
       updateScale();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0);
+    };
+
+    img.onerror = () => {
+      console.error("Erro: Não foi possível encontrar a imagem em /public/image.png");
+      setImageError(true);
     };
   }, [updateScale]);
 
@@ -239,6 +248,14 @@ export function InteractiveParkingMap({
             cursor: isEditing ? 'move' : hoveredSpot ? 'pointer' : 'default'
           }}
         >
+          {imageError && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-300 text-gray-500 z-10">
+              <ImageOff className="w-12 h-12 mb-2" />
+              <p className="font-bold">Imagem não encontrada!</p>
+              <p className="text-xs">Certifique-se que o arquivo 'image.png' está na pasta 'public'.</p>
+            </div>
+          )}
+
           <canvas
             ref={canvasRef}
             onClick={handleCanvasClick}
@@ -265,7 +282,7 @@ export function InteractiveParkingMap({
                     onSpotClick(spot.id, spot.is_occupied);
                   }
                 }}
-                className={`absolute flex items-center justify-center gap-1 rounded-sm border-2 text-[13px] font-bold text-white shadow-md transition-all ${
+                className={`absolute flex items-center justify-center gap-0.5 rounded-sm border text-[14px] font-bold text-white shadow-md transition-all ${
                   selectedSpot === pos.spotNumber
                     ? 'ring-4 ring-blue-400 border-white scale-110 z-40'
                     : ''
@@ -277,12 +294,12 @@ export function InteractiveParkingMap({
                     : 'border-green-300 bg-green-600/90'
                 }`}
                 style={{
-                  left: `${((pos.x + pos.width / 2) / ORIGINAL_IMAGE_WIDTH) * 100}%`,
-                  top: `${((pos.y + pos.height / 2) / ORIGINAL_IMAGE_HEIGHT) * 100}%`,
-                  width: `${(pos.width / ORIGINAL_IMAGE_WIDTH) * 100}%`,
-                  height: `${(pos.height / ORIGINAL_IMAGE_HEIGHT) * 100}%`,
-                  minWidth: '24px',
-                  minHeight: '14px',
+                  left: `${((pos.x + globalWidth / 2) / imgSize.w) * 100}%`,
+                  top: `${((pos.y + globalHeight / 2) / imgSize.h) * 100}%`,
+                  width: `${(globalWidth / imgSize.w) * 100}%`,
+                  height: `${(globalHeight / imgSize.h) * 100}%`,
+                  minWidth: '2px',
+                  minHeight: '2px',
                   zIndex: isEditing ? 60 : (draggingSpot === pos.spotNumber ? 50 : 10),
                   transform: `translate(-50%, -50%) rotate(${(pos.rotation || 0) + rotation}deg)`,
                   transformOrigin: 'center center',
