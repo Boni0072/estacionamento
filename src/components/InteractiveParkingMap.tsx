@@ -282,7 +282,7 @@ export function InteractiveParkingMap({
                     onSpotClick(spot.id, spot.is_occupied);
                   }
                 }}
-                className={`absolute flex items-center justify-center gap-0.5 rounded-sm border text-[14px] font-bold text-white shadow-md transition-all ${
+                className={`absolute flex items-center justify-center gap-0.5 rounded-sm border text-xs font-bold text-white shadow-md transition-all ${
                   selectedSpot === pos.spotNumber
                     ? 'ring-4 ring-blue-400 border-white scale-110 z-40'
                     : ''
@@ -352,3 +352,4 @@ export function InteractiveParkingMap({
     </div>
   );
 }
+ 
