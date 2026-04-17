@@ -273,7 +273,7 @@ export function InteractiveParkingMap({
                 key={pos.spotNumber}
                 type="button"
                 onMouseDown={e => handleMarkerMouseDown(pos.spotNumber, e)}
-                onDoubleClick={() => onUpdateRotation(pos.spotNumber, (pos.rotation || 0) - 90)}
+                onDoubleClick={() => isEditing && onUpdateRotation(pos.spotNumber, (pos.rotation || 0) - 90)}
                 onContextMenu={e => { e.preventDefault(); onDeleteSpot(pos.spotNumber); }}
                 onClick={() => {
                   if (isEditing) {
