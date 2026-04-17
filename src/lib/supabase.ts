@@ -18,6 +18,8 @@ export interface ParkingSpot {
   spot_number: string;
   is_occupied: boolean;
   occupied_at: string | null;
+  occupied_by?: string | null;
+  expires_at?: string | null;
   created_at: string;
   updated_at: string;
   latitude?: number;

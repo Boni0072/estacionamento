@@ -25,8 +25,6 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 
-const STORAGE_KEY = 'parking_spot_positions';
-const STORAGE_KEY_ROTATION = 'parking_rotation';
 const SPOT_WIDTH = 60.0;
 const SPOT_HEIGHT = 18.0;
 
@@ -638,7 +636,10 @@ export function ParkingManager() {
         pos.spotNumber === spotNumber ? { ...pos, x, y } : pos
     );
     setSpotPositions(newPositions);
-    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions }).catch(err => {
+      console.error('Erro ao salvar posição:', err);
+      setFirestoreError('Erro ao salvar: ' + err.message);
+    });
   }
 
   function updateSpotRotation(spotNumber: string, rotation: number) {
@@ -646,13 +647,19 @@ export function ParkingManager() {
         pos.spotNumber === spotNumber ? { ...pos, rotation } : pos
     );
     setSpotPositions(newPositions);
-    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions }).catch(err => {
+      console.error('Erro ao salvar rotação:', err);
+      setFirestoreError('Erro ao salvar: ' + err.message);
+    });
   }
 
   function deleteSpot(spotNumber: string) {
     const newPositions = spotPositions.filter(pos => pos.spotNumber !== spotNumber);
     setSpotPositions(newPositions);
-    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions }).catch(err => {
+      console.error('Erro ao deletar vaga:', err);
+      setFirestoreError('Erro ao salvar: ' + err.message);
+    });
   }
 
   function updateSpotWidth(spotNumber: string, width: number) {
@@ -660,7 +667,10 @@ export function ParkingManager() {
         pos.spotNumber === spotNumber ? { ...pos, width } : pos
     );
     setSpotPositions(newPositions);
-    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions }).catch(err => {
+      console.error('Erro ao salvar largura:', err);
+      setFirestoreError('Erro ao salvar: ' + err.message);
+    });
   }
 
   function updateSpotHeight(spotNumber: string, height: number) {
@@ -668,7 +678,10 @@ export function ParkingManager() {
         pos.spotNumber === spotNumber ? { ...pos, height } : pos
     );
     setSpotPositions(newPositions);
-    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions }).catch(err => {
+      console.error('Erro ao salvar altura:', err);
+      setFirestoreError('Erro ao salvar: ' + err.message);
+    });
   }
 
   function updateSpotLatitude(spotNumber: string, latitude: number) {
@@ -676,7 +689,10 @@ export function ParkingManager() {
         pos.spotNumber === spotNumber ? { ...pos, latitude } : pos
     );
     setSpotPositions(newPositions);
-    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions }).catch(err => {
+      console.error('Erro ao salvar latitude:', err);
+      setFirestoreError('Erro ao salvar: ' + err.message);
+    });
   }
 
   function updateSpotLongitude(spotNumber: string, longitude: number) {
@@ -684,14 +700,20 @@ export function ParkingManager() {
         pos.spotNumber === spotNumber ? { ...pos, longitude } : pos
     );
     setSpotPositions(newPositions);
-    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions }).catch(err => {
+      console.error('Erro ao salvar longitude:', err);
+      setFirestoreError('Erro ao salvar: ' + err.message);
+    });
   }
 
   function updateGlobalConfig(field: string, value: number) {
     if (field === 'spotWidth') setGlobalWidth(value);
     if (field === 'spotHeight') setGlobalHeight(value);
     if (field === 'rotation') setRotation(value);
-    updateDoc(doc(db, 'config', 'parking'), { [field]: value });
+    updateDoc(doc(db, 'config', 'parking'), { [field]: value }).catch(err => {
+      console.error('Erro ao salvar configuração global:', err);
+      setFirestoreError('Erro ao salvar: ' + err.message);
+    });
   }
 
   function applyDimensionsToAll() {
@@ -705,6 +727,9 @@ export function ParkingManager() {
     
     updateDoc(doc(db, 'config', 'parking'), { 
       spotPositions: newPositions 
+    }).catch(err => {
+      console.error('Erro ao aplicar dimensões:', err);
+      setFirestoreError('Erro ao salvar: ' + err.message);
     });
   }
 
@@ -723,7 +748,10 @@ export function ParkingManager() {
         height: globalHeight
       }
     ];
-    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
+    updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions }).catch(err => {
+      console.error('Erro ao adicionar vaga:', err);
+      setFirestoreError('Erro ao salvar: ' + err.message);
+    });
     setNewSpotNumber('');
   }
 

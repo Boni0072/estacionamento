@@ -49,9 +49,16 @@ export function InteractiveParkingMap({
   const [hoveredSpot, setHoveredSpot] = useState<string | null>(null);
   const [draggingSpot, setDraggingSpot] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [localPositions, setLocalPositions] = useState<SpotPosition[]>(spotPositions);
   const [imgSize, setImgSize] = useState({ w: 1536, h: 1024 });
   const [imageError, setImageError] = useState(false);
   const [zoom, setZoom] = useState(1);
+
+  useEffect(() => {
+    if (!draggingSpot) {
+      setLocalPositions(spotPositions);
+    }
+  }, [spotPositions, draggingSpot]);
 
   const toggleFullscreen = () => {
     if (!wrapperRef.current) return;
@@ -175,6 +182,9 @@ export function InteractiveParkingMap({
   useEffect(() => {
     if (!draggingSpot) return;
 
+    let lastX = 0;
+    let lastY = 0;
+
     const handleMouseMove = (event: MouseEvent) => {
       if (!canvasRef.current) return;
 
@@ -185,20 +195,21 @@ export function InteractiveParkingMap({
       const y = (position.y - dragOffset.y) / scale;
 
       const canvas = canvasRef.current;
-      // Busca o tamanho real da vaga sendo arrastada para um limite preciso
-      const draggingPos = spotPositions.find(p => p.spotNumber === draggingSpot);
       const spotW = globalWidth || 45.0;
       const spotH = globalHeight || 12.0;
 
       const maxX = canvas.width - spotW;
       const maxY = canvas.height - spotH;
-      const clampedX = Math.max(0, Math.min(x, maxX));
-      const clampedY = Math.max(0, Math.min(y, maxY));
+      lastX = Math.max(0, Math.min(x, maxX));
+      lastY = Math.max(0, Math.min(y, maxY));
 
-      onUpdatePosition(draggingSpot, clampedX, clampedY);
+      setLocalPositions(prev => prev.map(p =>
+        p.spotNumber === draggingSpot ? { ...p, x: lastX, y: lastY } : p
+      ));
     };
 
     const handleMouseUp = () => {
+      onUpdatePosition(draggingSpot, lastX, lastY);
       setDraggingSpot(null);
     };
 
@@ -208,7 +219,7 @@ export function InteractiveParkingMap({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingSpot, dragOffset, scale, onUpdatePosition]);
+  }, [draggingSpot, dragOffset, scale, onUpdatePosition, globalWidth, globalHeight]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -264,7 +275,7 @@ export function InteractiveParkingMap({
             className="w-full h-auto block shadow-lg"
           />
 
-          {spotPositions.map(pos => {
+          {localPositions.map(pos => {
             const spot = spots.find(s => s.spot_number === pos.spotNumber);
             const occupied = spot?.is_occupied;
 
