@@ -637,6 +637,7 @@ export function ParkingManager() {
     const newPositions = spotPositions.map(pos =>
         pos.spotNumber === spotNumber ? { ...pos, x, y } : pos
     );
+    setSpotPositions(newPositions);
     updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
   }
 
@@ -644,11 +645,13 @@ export function ParkingManager() {
     const newPositions = spotPositions.map(pos =>
         pos.spotNumber === spotNumber ? { ...pos, rotation } : pos
     );
+    setSpotPositions(newPositions);
     updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
   }
 
   function deleteSpot(spotNumber: string) {
     const newPositions = spotPositions.filter(pos => pos.spotNumber !== spotNumber);
+    setSpotPositions(newPositions);
     updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
   }
 
@@ -656,6 +659,7 @@ export function ParkingManager() {
     const newPositions = spotPositions.map(pos =>
         pos.spotNumber === spotNumber ? { ...pos, width } : pos
     );
+    setSpotPositions(newPositions);
     updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
   }
 
@@ -663,6 +667,7 @@ export function ParkingManager() {
     const newPositions = spotPositions.map(pos =>
         pos.spotNumber === spotNumber ? { ...pos, height } : pos
     );
+    setSpotPositions(newPositions);
     updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
   }
 
@@ -670,6 +675,7 @@ export function ParkingManager() {
     const newPositions = spotPositions.map(pos =>
         pos.spotNumber === spotNumber ? { ...pos, latitude } : pos
     );
+    setSpotPositions(newPositions);
     updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
   }
 
@@ -677,10 +683,14 @@ export function ParkingManager() {
     const newPositions = spotPositions.map(pos =>
         pos.spotNumber === spotNumber ? { ...pos, longitude } : pos
     );
+    setSpotPositions(newPositions);
     updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
   }
 
   function updateGlobalConfig(field: string, value: number) {
+    if (field === 'spotWidth') setGlobalWidth(value);
+    if (field === 'spotHeight') setGlobalHeight(value);
+    if (field === 'rotation') setRotation(value);
     updateDoc(doc(db, 'config', 'parking'), { [field]: value });
   }
 
@@ -715,6 +725,22 @@ export function ParkingManager() {
     ];
     updateDoc(doc(db, 'config', 'parking'), { spotPositions: newPositions });
     setNewSpotNumber('');
+  }
+
+  // Garante que todas as alterações locais sejam enviadas ao banco de uma vez
+  async function saveAllConfigs() {
+    try {
+      const docRef = doc(db, 'config', 'parking');
+      await updateDoc(docRef, {
+        spotPositions,
+        spotWidth: globalWidth,
+        spotHeight: globalHeight,
+        rotation,
+        name: parkingName
+      });
+    } catch (err) {
+      console.error("Erro ao realizar salvamento automático:", err);
+    }
   }
 
   const markerNumbers = new Set(spotPositions.map(p => p.spotNumber));
@@ -982,7 +1008,10 @@ export function ParkingManager() {
                 ) : (
                   <>
                     <button
-                      onClick={() => setIsEditMode(prev => !prev)}
+                      onClick={() => {
+                        if (isEditMode) saveAllConfigs(); // Salva ao sair do modo edição
+                        setIsEditMode(prev => !prev);
+                      }}
                       className={`p-2.5 rounded-lg border backdrop-blur-md transition-all shadow-sm ${
                         isEditMode ? 'bg-yellow-500/40 border-yellow-200/50 text-yellow-700' : 'bg-blue-500/40 border-blue-200/50 text-blue-700'
                       }`}
@@ -993,6 +1022,7 @@ export function ParkingManager() {
                     <button
                       onClick={() => {
                         const newRot = rotation - 90;
+                        setRotation(newRot); // Atualiza localmente para resposta imediata
                         updateDoc(doc(db, 'config', 'parking'), { rotation: newRot });
                       }}
                       className="p-2.5 rounded-lg bg-indigo-500/40 backdrop-blur-md text-indigo-700 border border-indigo-200/50 shadow-sm hover:bg-indigo-500/60"
@@ -1019,7 +1049,11 @@ export function ParkingManager() {
                       <AlertTriangle className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => { setIsAdmin(false); setIsEditMode(false); }}
+                      onClick={() => { 
+                        if (isEditMode) saveAllConfigs(); // Salva ao deslogar se estiver editando
+                        setIsAdmin(false); 
+                        setIsEditMode(false); 
+                      }}
                       className="p-2.5 rounded-lg bg-red-500/40 backdrop-blur-md text-red-700 border border-red-200/50 shadow-sm hover:bg-red-500/60"
                       title="Sair do Admin"
                     >
