@@ -26,6 +26,7 @@ interface InteractiveParkingMapProps {
   onSelectSpot: (spotNumber: string | null) => void;
   globalWidth: number;
   globalHeight: number;
+  suggestedSpot?: string | null;
 }
 
 export function InteractiveParkingMap({
@@ -41,6 +42,7 @@ export function InteractiveParkingMap({
   onSelectSpot,
   globalWidth,
   globalHeight,
+  suggestedSpot,
 }: InteractiveParkingMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -300,6 +302,8 @@ export function InteractiveParkingMap({
                 } ${
                   draggingSpot === pos.spotNumber
                     ? 'border-yellow-300 bg-yellow-600/90 z-30'
+                    : suggestedSpot === pos.spotNumber
+                    ? 'border-yellow-300 bg-yellow-500/95 ring-2 ring-yellow-300 animate-pulse z-20'
                     : occupied
                     ? 'border-red-300 bg-red-600/90'
                     : 'border-green-300 bg-green-600/90'

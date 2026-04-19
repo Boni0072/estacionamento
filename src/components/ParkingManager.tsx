@@ -302,6 +302,7 @@ export function ParkingManager() {
   const [globalHeight, setGlobalHeight] = useState(18.0);
   const [rotation, setRotation] = useState(0);
   const [showStats, setShowStats] = useState(true);
+  const [skippedSpots, setSkippedSpots] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     // Verifica se o app já está instalado/rodando em modo standalone
@@ -416,23 +417,41 @@ export function ParkingManager() {
   }, [spots]);
 
   useEffect(() => {
-    // Monitoramento contínuo do GPS - pausa se houver uma vaga confirmada
     let watchId: number;
-    if ("geolocation" in navigator) {
-      watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          if (confirmedSpot) return; // Trava a atualização se já confirmou
-          const { latitude, longitude } = position.coords;
-          setUserLocation({ lat: latitude, lng: longitude });
-          setGpsError(false);
-        },
-        (error) => {
-          console.error("Erro GPS:", error);
-          setGpsError(true);
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-      );
-    }
+    if (!("geolocation" in navigator)) return;
+
+    const onSuccess = (position: GeolocationPosition) => {
+      if (confirmedSpot) return;
+      const { latitude, longitude } = position.coords;
+      setUserLocation({ lat: latitude, lng: longitude });
+      setGpsError(false);
+    };
+
+    const onError = (error: GeolocationPositionError) => {
+      console.error("Erro GPS:", error);
+      setGpsError(true);
+    };
+
+    // 1ª tentativa: posição rápida aceitando cache de até 30s (retorna quase imediato)
+    navigator.geolocation.getCurrentPosition(onSuccess, () => {}, {
+      enableHighAccuracy: false,
+      timeout: 3000,
+      maximumAge: 30000,
+    });
+
+    // 2ª tentativa: posição precisa em paralelo, atualiza quando chegar
+    navigator.geolocation.getCurrentPosition(onSuccess, () => {}, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0,
+    });
+
+    // Monitoramento contínuo com alta precisão
+    watchId = navigator.geolocation.watchPosition(onSuccess, onError, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 5000,
+    });
 
     return () => {
       if (watchId) navigator.geolocation.clearWatch(watchId);
@@ -444,9 +463,9 @@ export function ParkingManager() {
     const hasActiveReservation = spots.some(s => s.occupied_by === userId && s.is_occupied);
     if (!userLocation || loading || isEditMode || spots.length === 0 || confirmedSpot || hasActiveReservation) return;
 
-    // Filtra as vagas que possuem GPS cadastrado e associa ao status atual do banco
+    // Filtra as vagas que possuem GPS cadastrado, não estão ocupadas e não foram ignoradas pelo usuário
     const candidates = spotPositions
-      .filter(pos => pos.latitude && pos.longitude)
+      .filter(pos => pos.latitude && pos.longitude && !skippedSpots.has(pos.spotNumber))
       .map(pos => ({
         pos,
         dbSpot: spots.find(s => s.spot_number === pos.spotNumber)
@@ -473,13 +492,9 @@ export function ParkingManager() {
       }
     });
 
-    // Threshold de proximidade ajustado para ~7 metros
-    if (minDistanceSq < 0.000000004) {
-      setDetectedSpotName(closestItem.pos.spotNumber);
-    } else {
-      setDetectedSpotName(null);
-    }
-  }, [userLocation, spots, spotPositions, loading, isEditMode, confirmedSpot]);
+    // Sempre sugere a vaga livre mais próxima com GPS cadastrado
+    setDetectedSpotName(closestItem.pos.spotNumber);
+  }, [userLocation, spots, spotPositions, loading, isEditMode, confirmedSpot, skippedSpots]);
 
   const exportData = () => {
     const data = { parkingName, spotPositions, spots, rotation, spotWidth: globalWidth, spotHeight: globalHeight };
@@ -1006,6 +1021,15 @@ export function ParkingManager() {
                         >
                           Confirmar Ocupação
                         </button>
+                        <button
+                          onClick={() => {
+                            setSkippedSpots(prev => new Set(prev).add(detectedSpotName));
+                            setDetectedSpotName(null);
+                          }}
+                          className="mt-1 w-full text-[9px] font-bold bg-red-500/60 text-white px-2 py-1 rounded hover:bg-red-600/80 transition-colors"
+                        >
+                          Ja esta ocupada
+                        </button>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 py-0.5">
@@ -1140,6 +1164,7 @@ export function ParkingManager() {
                 onSelectSpot={setSelectedSpotForEdit}
                 globalWidth={globalWidth}
                 globalHeight={globalHeight}
+                suggestedSpot={detectedSpotName}
               />
             </div>
           </div>
